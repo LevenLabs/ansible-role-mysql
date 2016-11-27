@@ -30,10 +30,24 @@
 
 - name: Get list of hosts for the root user.
   command: mysql -NBe "SELECT Host FROM mysql.user WHERE User = '{{ mysql_root_username }}' ORDER BY (Host='localhost') ASC"
-  register: mysql_root_hosts
+  register: mysql_root_hosts_cmd
   changed_when: false
   check_mode: no
-  when: mysql_install_packages | bool or mysql_root_password_update
+
+# we need to remove any hostnames from the mysql_root_hosts if mysql_skip_name_resolve
+- set_fact:
+    mysql_root_hosts: "{{ mysql_root_hosts_cmd.stdout_lines }}"
+- set_fact:
+    mysql_root_hosts_lines: |
+      {% for host in mysql_root_hosts %}
+      {% if host != ansible_nodename and host != ansible_hostname  %}
+      {{ host }}
+      {% endif %}
+      {% endfor %}
+  when: mysql_skip_name_resolve|bool
+- set_fact:
+    mysql_root_hosts: "{{ mysql_root_hosts_lines.split('\n') }}"
+  when: mysql_skip_name_resolve|bool
 
 # Note: We do not use mysql_user for this operation, as it doesn't always update
 # the root password correctly. See: https://goo.gl/MSOejW
@@ -42,7 +56,7 @@
   shell: >
     mysql -u root -NBe
     'ALTER USER "{{ mysql_root_username }}"@"{{ item }}" IDENTIFIED WITH mysql_native_password BY "{{ mysql_root_password }}";'
-  with_items: "{{ mysql_root_hosts.stdout_lines|default([]) }}"
+  with_items: "{{ mysql_root_hosts|default([]) }}"
   when: ((mysql_install_packages | bool) or mysql_root_password_update) and ('5.7.' in mysql_cli_version.stdout)
 
 # Set root password for MySQL < 5.7.x.
@@ -50,10 +64,11 @@
   shell: >
     mysql -NBe
     'SET PASSWORD FOR "{{ mysql_root_username }}"@"{{ item }}" = PASSWORD("{{ mysql_root_password }}");'
-  with_items: "{{ mysql_root_hosts.stdout_lines|default([]) }}"
-  when: ((mysql_install_packages | bool) or mysql_root_password_update) and ('5.7.' not in mysql_cli_version.stdout)
+  with_items: "{{ mysql_root_hosts|default([]) }}"
+  when: item != "" and ((mysql_install_packages | bool) or mysql_root_password_update) and ('5.7.' not in mysql_cli_version.stdout)
 
 # Has to be after the root password assignment, for idempotency.
+# If the mysql_user command fails, then we might be in a state where we cannot update
 - name: Copy .my.cnf file with root password credentials.
   template:
     src: "root-my.cnf.j2"
