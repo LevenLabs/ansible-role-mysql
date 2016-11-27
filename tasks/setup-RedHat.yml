@@ -1,10 +1,26 @@
 ---
+- name: Install custom repo file
+  become: yes
+  copy:
+    dest: "/etc/yum.repos.d/{{ mysql_repo_filename }}"
+    owner: root
+    group: root
+    content: "{{ mysql_repo_contents }}"
+
 - name: Ensure MySQL packages are installed.
   yum:
     name: "{{ mysql_packages }}"
     state: present
     enablerepo: "{{ mysql_enablerepo | default(omit, true) }}"
   register: rh_mysql_install_packages
+
+- name: Ensure MySQL paths exist
+  file:
+    path: "{{ mysql_pid_file | dirname }}"
+    owner: mysql
+    group: mysql
+    state: directory
+    mode: 0755
 
 - name: Ensure MySQL Python libraries are installed.
   yum:
