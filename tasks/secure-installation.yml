@@ -47,6 +47,11 @@
     mysql_root_hosts: "{{ mysql_root_hosts_lines.split('\n') }}"
   when: mysql_skip_name_resolve | bool
 
+- set_fact:
+    # added in mysql 5.7 and in mariadb 10.1
+    # technically 10.2 is still RC, but I don't want keep updating this
+    mysql_supports_password_api: ('5.7.' in mysql_cli_version.stdout) or ('8.0.' in mysql_cli_version.stdout) or ('10.1.' in mysql_cli_version.stdout) or ('10.2.' in mysql_cli_version.stdout)
+
 # Note: We do not use mysql_user for this operation, as it doesn't always update
 # the root password correctly. See: https://goo.gl/MSOejW
 # Set root password for MySQL >= 5.7.x.
@@ -57,17 +62,17 @@
   with_items: "{{ mysql_root_hosts|default([]) }}"
   when: >
     item != "" and ((mysql_install_packages | bool) or mysql_root_password_update)
-    and ('5.7.' in mysql_cli_version.stdout or '8.0.' in mysql_cli_version.stdout)
+    and (mysql_supports_password_api | bool)
 
 # Set root password for MySQL < 5.7.x.
 - name: Update MySQL root password for localhost root account (< 5.7.x).
   shell: >
     mysql -NBe
     'SET PASSWORD FOR "{{ mysql_root_username }}"@"{{ item }}" = PASSWORD("{{ mysql_root_password }}");'
-  with_items: "{{ mysql_root_hosts.stdout_lines|default([]) }}"
+  with_items: "{{ mysql_root_hosts|default([]) }}"
   when: >
     item != "" and ((mysql_install_packages | bool) or mysql_root_password_update)
-    and ('5.7.' not in mysql_cli_version.stdout and '8.0.' not in mysql_cli_version.stdout)
+    and (not mysql_supports_password_api | bool)
 
 # Has to be after the root password assignment, for idempotency.
 # If the mysql_user command fails, then we might be in a state where we cannot update
