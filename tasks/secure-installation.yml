@@ -32,7 +32,7 @@
   command: mysql -NBe "SELECT Host FROM mysql.user WHERE User = '{{ mysql_root_username }}' ORDER BY (Host='localhost') ASC"
   register: mysql_root_hosts_cmd
   changed_when: false
-  check_mode: no
+  always_run: true
 
 # we need to remove any hostnames from the mysql_root_hosts if mysql_skip_name_resolve
 - set_fact:
@@ -87,7 +87,7 @@
   command: mysql -NBe 'SELECT Host FROM mysql.user WHERE User = ""'
   register: mysql_anonymous_hosts
   changed_when: false
-  check_mode: no
+  always_run: true
 
 - name: Remove anonymous MySQL users.
   mysql_user:
